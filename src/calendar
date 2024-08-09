@@ -1,0 +1,97 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"time"
+
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/google"
+	"google.golang.org/api/calendar/v3"
+	"google.golang.org/api/googleapi/transport"
+)
+
+const (
+	clientID     = "YOUR_CLIENT_ID"
+	clientSecret = "YOUR_CLIENT_SECRET"
+	accessToken  = "ACCESS_TOKEN"
+	refreshToken = "REFRESH_TOKEN"
+)
+
+func main() {
+	// OAuth2 の設定
+	config := oauth2.Config{
+		ClientID:     clientID,
+		ClientSecret: clientSecret,
+		Endpoint:     google.Endpoint,
+		RedirectURL:  "urn:ietf:wg:oauth:2.0:oob",
+	}
+
+	// OAuth2 のトークンを作成
+	token := &oauth2.Token{
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+		TokenType:    "Bearer",
+		Expiry:       time.Now().Add(-time.Hour),
+	}
+
+	// Google Calendar クライアントの作成
+	ctx := context.Background()
+	client := config.Client(ctx, token)
+	client.Transport = &transport.APIKey{Key: accessToken}
+	svc, err := calendar.New(client)
+	if err != nil {
+		log.Fatalf("Failed to create calendar service: %v", err)
+	}
+
+	// 新しいイベントを作成
+	newEvent := &calendar.Event{
+		Summary:     "編集不可のイベント",
+		Location:    "場所",
+		Description: "ゲストはこのイベントを編集できません",
+		Start: &calendar.EventDateTime{
+			DateTime: "2024-08-10T10:00:00+09:00",
+			TimeZone: "Asia/Tokyo",
+		},
+		End: &calendar.EventDateTime{
+			DateTime: "2024-08-10T12:00:00+09:00",
+			TimeZone: "Asia/Tokyo",
+		},
+		Visibility:     "private", // 非公開設定
+		GuestsCanModify: false,     // ゲストが編集できないように設定
+		GuestsCanInviteOthers: false, // ゲストが他の人を招待できないように設定
+		GuestsCanSeeOtherGuests: false, // ゲストが他のゲストを見れないように設定
+		ConferenceData: &calendar.ConferenceData{
+			CreateRequest: &calendar.CreateConferenceRequest{
+				RequestId: "sample-12345",
+				ConferenceSolutionKey: &calendar.ConferenceSolutionKey{
+					Type: "hangoutsMeet",
+				},
+			},
+		},
+	}
+
+	// イベントの作成
+	event, err := svc.Events.Insert("primary", newEvent).ConferenceDataVersion(1).Do()
+	if err != nil {
+		log.Fatalf("Failed to create event: %v", err)
+	}
+	fmt.Printf("Created event: %s\n", event.Id)
+
+	// イベントの更新
+	event.Summary = "更新されたイベントのタイトル"
+	event.Description = "このイベントの詳細が更新されました"
+	updatedEvent, err := svc.Events.Update("primary", event.Id, event).Do()
+	if err != nil {
+		log.Fatalf("Failed to update event: %v", err)
+	}
+	fmt.Printf("Updated event: %s\n", updatedEvent.Id)
+
+	// イベントの削除
+	err = svc.Events.Delete("primary", updatedEvent.Id).Do()
+	if err != nil {
+		log.Fatalf("Failed to delete event: %v", err)
+	}
+	fmt.Println("Deleted event.")
+}
